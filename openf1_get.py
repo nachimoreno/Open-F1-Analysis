@@ -5,7 +5,7 @@ import time
 import pandas as pd
 
 BASE_URL = "https://api.openf1.org/v1/"
-TIME_BETWEEN_REQUESTS = 60
+TIME_BETWEEN_REQUESTS = 5
 VALID_ENDPOINTS_AND_PARAMETERS = {
     "car_data": [  # Some data about each car, at a sample rate of about 3.7 Hz.
         "brake",  # Whether the brake pedal is pressed (100) or not (0).
@@ -267,13 +267,12 @@ def parse_response(response):
 
 
 def spam_check():
-    seconds = 10
     current_time = datetime.datetime.now()
     last_get_date = fh.read_last_get_date()
     diff = current_time - last_get_date
-    if diff < datetime.timedelta(seconds=seconds):
-        print(f"get(): Sleeping for {round(seconds - diff.total_seconds())} seconds to prevent spamming the API")
-        time.sleep(seconds - diff.total_seconds())
+    if diff < datetime.timedelta(seconds=TIME_BETWEEN_REQUESTS):
+        print(f"get(): Sleeping for {round(TIME_BETWEEN_REQUESTS - diff.total_seconds())} seconds to prevent spamming the API")
+        time.sleep(TIME_BETWEEN_REQUESTS - diff.total_seconds())
 
     return
 
