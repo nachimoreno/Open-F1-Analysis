@@ -5,7 +5,7 @@ import time
 import pandas as pd
 
 BASE_URL = "https://api.openf1.org/v1/"
-TIME_BETWEEN_REQUESTS = 5
+TIME_BETWEEN_REQUESTS = 3
 VALID_ENDPOINTS_AND_PARAMETERS = {
     "car_data": [  # Some data about each car, at a sample rate of about 3.7 Hz.
         "brake",  # Whether the brake pedal is pressed (100) or not (0).

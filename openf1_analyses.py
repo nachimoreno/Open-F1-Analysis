@@ -2,8 +2,17 @@ import openf1_get as g
 import openf1_file_helpers as fh
 import pandas as pd
 
-def fp_short_run_analysis(session_key):
+def fp_short_run_analysis(session_key, analysis_depth='shallow'):
     """Produce an analysis of short runs in free practice"""
+    round_to = 2
+
+    def get_session_info(session_key_):
+        query = ("sessions", {"session_key": session_key_})
+        df = g.get(query[0], query[1])
+        fh.cache_response(df, 'test', 'session_info')
+
+        return df
+
     def get_and_sort_laps(session_key_):
         query = ("laps", {'session_key': session_key_})
         df = g.get(query[0], query[1])
@@ -16,6 +25,14 @@ def fp_short_run_analysis(session_key):
         query = ("stints", {'session_key': session_key_})
         df = g.get(query[0], query[1])
         df.drop(['meeting_key', 'session_key'], axis=1, inplace=True)
+        df.sort_values(by=['driver_number'], inplace=True)
+
+        return df
+
+    def get_and_sort_drivers(session_key_):
+        query = ("drivers", {'session_key': session_key_})
+        df = g.get(query[0], query[1])
+        # df.drop(['meeting_key', 'session_key'], axis=1, inplace=True)
         df.sort_values(by=['driver_number'], inplace=True)
 
         return df
@@ -43,8 +60,6 @@ def fp_short_run_analysis(session_key):
         return df
 
     def select_qualifying_runs(df_combi_):
-        round_to = 2
-
         # Selection Variables
         max_time_gap = 2 # 2%
         max_speed_delta = -2.5 # -2.5%
@@ -128,6 +143,9 @@ def fp_short_run_analysis(session_key):
         df = df[df['fast_sectors'] == min_fast_sectors]
         df = df[df['st_speed_delta_to_best'] > max_speed_delta]
 
+        return df
+
+    def set_up_qra(df):
         # Drop irrelevant columns
         df = df.drop([
             'i1_speed',
@@ -145,20 +163,92 @@ def fp_short_run_analysis(session_key):
             'tyre_age_at_start'
         ], axis=1)
 
+        # Add comparison statistics
         df['gap_to_leader'] = round(df['lap_duration'] - df['lap_duration'].min(), round_to)
         df['sector_1_gap_to_leader'] = round(df['duration_sector_1'] - df['duration_sector_1'].min(), round_to)
         df['sector_2_gap_to_leader'] = round(df['duration_sector_2'] - df['duration_sector_2'].min(), round_to)
         df['sector_3_gap_to_leader'] = round(df['duration_sector_3'] - df['duration_sector_3'].min(), round_to)
         df['st_delta_to_leader'] = round(df['st_speed'].max() - df['st_speed'], round_to)
 
-        fh.cache_response(df, 'test', 'laps_and_stints_sort')
+        # Merge in driver names
+        df_drivers = get_and_sort_drivers(session_key)
+        df = df.merge(df_drivers, left_on='driver_number_x', right_on='driver_number', how='left')
+        df.drop([
+            'headshot_url',
+            'driver_number_x',
+            'team_colour',
+            'meeting_key',
+            'broadcast_name',
+            'first_name',
+            'last_name',
+            'country_code',
+            'name_acronym',
+            'stint_number'
+        ], axis=1, inplace=True)
+
+        # Reorder columns for readability
+        column_order = [
+            'session_key',
+            'team_name',
+            'full_name',
+            'driver_number',
+            'compound',
+            'lap_duration',
+            'gap_to_leader',
+            'duration_sector_1',
+            'sector_1_gap_to_leader',
+            'duration_sector_2',
+            'sector_2_gap_to_leader',
+            'duration_sector_3',
+            'sector_3_gap_to_leader',
+            'st_speed',
+            'st_delta_to_leader'
+        ]
+        df = df.loc[:, column_order]
+
+        # Reorder rows for readability
+        row_order = df.groupby('driver_number')['gap_to_leader'].min().sort_values().index
+        df['driver_number'] = pd.Categorical(df['driver_number'], categories=row_order, ordered=True)
+        df = df.sort_values(["driver_number", "gap_to_leader"], ascending=[True, True])
 
         return df
+
+    def simplify_analysis(df):
+        best = (
+            df.dropna(subset=["gap_to_leader"])
+            .loc[df.groupby("driver_number")["gap_to_leader"].idxmin()]
+            .sort_values(["gap_to_leader", "driver_number"])
+            .reset_index(drop=True)
+        )
+
+        return best
+
+    def get_filename(session_key_):
+        df_session = get_session_info(session_key)
+        session_year = df_session["year"].iloc[0]
+        session_location = df_session["location"].iloc[0]
+        session_name = df_session["session_name"].iloc[0]
+
+        if analysis_depth == 'shallow':
+            filename = f"{session_year}-{session_location}-{session_name}-Shallow_QRA"
+        else:
+            filename = f"{session_year}-{session_location}-{session_name}-Deep_QRA"
+
+        return filename
 
     df_laps = get_and_sort_laps(session_key)
     df_stints = get_and_sort_stints(session_key)
     df_combi = combine_laps_and_stints(df_laps, df_stints)
     df_qualifying_runs = select_qualifying_runs(df_combi)
+    df_deep_qra = set_up_qra(df_qualifying_runs)
+
+    if analysis_depth == 'shallow':
+        df_qra = simplify_analysis(df_deep_qra)
+    else:
+        df_qra = df_deep_qra
+
+    fh.save_analysis(df_qra, 'qualifying runs', get_filename(session_key))
+    return df_qra
 
 def fp_long_run_analysis():
     """Produce an analysis of long runs in free practice"""
