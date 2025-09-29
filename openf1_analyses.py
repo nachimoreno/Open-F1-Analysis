@@ -2,21 +2,23 @@ import openf1_get as g
 import openf1_file_helpers as fh
 import pandas as pd
 
-def fp_short_run_analysis(session_key, analysis_depth='shallow'):
+
+def qualifying_runs(session_key, analysis_depth='shallow'):
     """Produce an analysis of short runs in free practice"""
     round_to = 2
 
     def get_session_info(session_key_):
         query = ("sessions", {"session_key": session_key_})
         df = g.get(query[0], query[1])
-        fh.cache_response(df, 'test', 'session_info')
 
         return df
 
     def get_and_sort_laps(session_key_):
         query = ("laps", {'session_key': session_key_})
         df = g.get(query[0], query[1])
-        df.drop(['meeting_key', 'session_key', 'date_start', 'segments_sector_1', 'segments_sector_2', 'segments_sector_3'], axis=1, inplace=True)
+        df.drop(
+            ['meeting_key', 'session_key', 'date_start', 'segments_sector_1', 'segments_sector_2', 'segments_sector_3'],
+            axis=1, inplace=True)
         df.sort_values(by=['driver_number', 'lap_number'], inplace=True)
 
         return df
@@ -61,14 +63,14 @@ def fp_short_run_analysis(session_key, analysis_depth='shallow'):
 
     def select_qualifying_runs(df_combi_):
         # Selection Variables
-        max_time_gap = 2 # 2%
-        max_speed_delta = -2.5 # -2.5%
-        max_sector_gap = 2 # 2%
+        max_time_gap = 2  # 2%
+        max_speed_delta = -2.5  # -2.5%
+        max_sector_gap = 2  # 2%
         min_fast_sectors = 3
 
         # Filter unnecessary columns and rows with missing data
         df = df_combi_[df_combi_["is_pit_out_lap"] != True]
-        df = df.drop(['is_pit_out_lap', 'driver_number_y','lap_start','lap_end'], axis=1)
+        df = df.drop(['is_pit_out_lap', 'driver_number_y', 'lap_start', 'lap_end'], axis=1)
         df = df.dropna()
 
         # Force these columns to float, in case they are accidentally read as strings
@@ -250,7 +252,8 @@ def fp_short_run_analysis(session_key, analysis_depth='shallow'):
     fh.save_analysis(df_qra, 'qualifying runs', get_filename(session_key))
     return df_qra
 
-def fp_long_run_analysis():
+
+def long_runs(session_key):
     """Produce an analysis of long runs in free practice"""
     pass
 

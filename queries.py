@@ -13,4 +13,4 @@ fh.cache_response(df_qual, 'test', 'season_qualifying_sessions')
 fh.cache_response(df_race, 'test', 'season_race_sessions')
 
 for session_key in df_prac['session_key'].unique():
-    analyses.fp_short_run_analysis(session_key)
+    analyses.qualifying_runs(session_key)
