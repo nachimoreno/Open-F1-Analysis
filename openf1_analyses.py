@@ -226,7 +226,7 @@ def qualifying_runs(session_key, analysis_depth='shallow'):
         return best
 
     def get_filename(session_key_):
-        df_session = get_session_info(session_key)
+        df_session = get_session_info(session_key_)
         session_year = df_session["year"].iloc[0]
         session_location = df_session["location"].iloc[0]
         session_name = df_session["session_name"].iloc[0]
@@ -240,8 +240,8 @@ def qualifying_runs(session_key, analysis_depth='shallow'):
 
     df_laps = get_and_sort_laps(session_key)
     df_stints = get_and_sort_stints(session_key)
-    df_combi = combine_laps_and_stints(df_laps, df_stints)
-    df_qualifying_runs = select_qualifying_runs(df_combi)
+    df_ls = combine_laps_and_stints(df_laps, df_stints)
+    df_qualifying_runs = select_qualifying_runs(df_ls)
     df_deep_qra = set_up_qra(df_qualifying_runs)
 
     if analysis_depth == 'shallow':
@@ -255,7 +255,67 @@ def qualifying_runs(session_key, analysis_depth='shallow'):
 
 def long_runs(session_key):
     """Produce an analysis of long runs in free practice"""
-    pass
+
+    def get_and_sort_laps(session_key_):
+        query = ("laps", {'session_key': session_key_})
+        df = g.get(query[0], query[1])
+        df.drop(
+            ['meeting_key', 'session_key', 'date_start', 'segments_sector_1', 'segments_sector_2', 'segments_sector_3'],
+            axis=1, inplace=True)
+        df.sort_values(by=['driver_number', 'lap_number'], inplace=True)
+
+        return df
+
+    def get_and_sort_stints(session_key_):
+        query = ("stints", {'session_key': session_key_})
+        df = g.get(query[0], query[1])
+        df.drop(['meeting_key', 'session_key'], axis=1, inplace=True)
+        df.sort_values(by=['driver_number'], inplace=True)
+
+        return df
+
+    def combine_laps_and_stints(df_laps_, df_stints_):
+        # Make a common key to join the two dataframes on
+        factor = max(df_laps_['lap_number'].max(), df_stints_['lap_end'].max()) + 10
+        df_laps_["_key"] = df_laps_['driver_number'] * factor + df_laps_['lap_number']
+        df_stints_["_key"] = df_stints_['driver_number'] * factor + df_stints_['lap_start']
+        df_laps_ = df_laps_.sort_values('_key')
+        df_stints_ = df_stints_.sort_values('_key')
+
+        # Merge the dataframes on the common key, and then drop the now irrelevant "_key" column
+        df = pd.merge_asof(
+            df_laps_, df_stints_,
+            left_on="_key", right_on="_key",
+            direction="backward", allow_exact_matches=True
+        ).drop(columns=["_key"])
+
+        # Ensure the merge has worked correctly
+        in_range = df['lap_number'].ge(df['lap_start']) & df['lap_number'].le(df['lap_end'])
+        stint_cols = [c for c in df_stints_.columns if c not in ('driver_number', "_key")]
+        df.loc[~in_range, stint_cols] = pd.NA
+
+        return df
+
+    def get_session_info(session_key_):
+        query = ("sessions", {"session_key": session_key_})
+        df = g.get(query[0], query[1])
+
+        return df
+
+    def get_filename(session_key_):
+        df_session = get_session_info(session_key_)
+        session_year = df_session["year"].iloc[0]
+        session_location = df_session["location"].iloc[0]
+        session_name = df_session["session_name"].iloc[0]
+        filename = f"{session_year}-{session_location}-{session_name}-LRA"
+
+        return filename
+
+    df_laps = get_and_sort_laps(session_key)
+    df_stints = get_and_sort_stints(session_key)
+    df_ls = combine_laps_and_stints(df_laps, df_stints)
+
+    fh.save_analysis(df_ls, 'long runs', get_filename(session_key))
 
 
 def teammate_comparison():
